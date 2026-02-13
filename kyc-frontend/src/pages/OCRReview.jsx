@@ -44,7 +44,7 @@ export default function OCRReview() {
             OCR Result Not Found
           </h2>
           <p className="text-slate-400 mb-6">
-            Please upload your Aadhaar document again.
+            Please upload your Aadhaar document again to proceed with the KYC process.
           </p>
           <button
             onClick={() => navigate("/aadhaar")}
