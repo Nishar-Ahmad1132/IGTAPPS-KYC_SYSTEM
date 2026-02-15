@@ -66,8 +66,8 @@ kyc_system/
 
 ### 1️⃣ Clone Repo
 
-git clone https://github.com/Nishar-Ahmad1132/IGTAPPS-KYS_SYSTEM.git
-cd IGTAPPS-KYS_SYSTEM
+git clone https://github.com/Nishar-Ahmad1132/IGTAPPS-KYC_SYSTEM.git
+cd IGTAPPS-KYC_SYSTEM
 
 2️⃣ Backend Setup
 cd kyc-backend
@@ -78,7 +78,7 @@ venv\Scripts\activate   # Windows
 pip install -r requirements.txt
 Run server:
 
-uvicorn app.main:app --reload
+uvicorn app.main:app --port 8080
 Backend runs on:
 
 http://127.0.0.1:8080
