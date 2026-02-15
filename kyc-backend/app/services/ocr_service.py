@@ -1,171 +1,384 @@
 import cv2
 import re
-import os
-from paddleocr import PaddleOCR
 import numpy as np
+from paddleocr import PaddleOCR
+from rapidfuzz import fuzz
+from rapidfuzz import fuzz   # ensure this is imported
 
-# load model once (VERY IMPORTANT for performance)
-ocr = PaddleOCR(use_angle_cls=True, lang="en")
+
+ocr = PaddleOCR(use_angle_cls=True, lang="en", show_log=False)
+
+# -------------------------
+# CONFIG
+# -------------------------
+OCR_CONF_THRESHOLD = 0.75
+NAME_MATCH_THRESHOLD = 70
 
 
 # -------------------------
-# mask aadhaar (security)
+# UTIL
 # -------------------------
-def mask_aadhaar(num: str):
+def mask_aadhaar(num):
     if not num:
         return None
     return "XXXX XXXX " + num[-4:]
 
 
-# -------------------------
-# preprocess image
-# -------------------------
-# -------------------------
-# preprocess image (MODULE 3 EXACT)
-# -------------------------
+def correct_digits(text):
+    mapping = {'B': '8', 'O': '0', 'D': '0', 'S': '5', 'I': '1', 'L': '1', 'Z': '2'}
+    return ''.join(mapping.get(c, c) for c in text)
 
-def preprocess(img_path: str) -> str:
-    img = cv2.imread(img_path)
 
-    if img is None:
-        raise ValueError("Image not found")
+# -------------------------
+# MULTI PREPROCESS
+# -------------------------
+def preprocess_variants(image_path):
+    img = cv2.imread(image_path)
 
-    # 1️⃣ grayscale
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-    # 2️⃣ resize (improves OCR clarity)
-    gray = cv2.resize(gray, None, fx=1.5, fy=1.5, interpolation=cv2.INTER_CUBIC)
+    h, w = gray.shape
+    if w < 1000:
+        scale = 1000 / w
+        gray = cv2.resize(gray, None, fx=scale, fy=scale)
 
-    # 3️⃣ gaussian blur
-    blur = cv2.GaussianBlur(gray, (5, 5), 0)
+    thresh = cv2.adaptiveThreshold(gray, 255,
+                                   cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                   cv2.THRESH_BINARY, 11, 2)
 
-    # 4️⃣ adaptive threshold
-    thresh = cv2.adaptiveThreshold(
-        blur,
-        255,
-        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY,
-        11,
-        2
-    )
+    kernel = np.array([[-1,-1,-1],[-1,9,-1],[-1,-1,-1]])
+    sharp = cv2.filter2D(gray, -1, kernel)
 
-    # 5️⃣ sharpen (🔥 IMPORTANT for text edges)
-    # 5️⃣ sharpen  (🔥 correct numpy kernel)
-    kernel = np.array([
-        [-1, -1, -1],
-        [-1,  9, -1],
-        [-1, -1, -1]
-    ], dtype=np.float32)
+    invert = cv2.bitwise_not(gray)
 
-    sharpened = cv2.filter2D(thresh, -1, kernel)
+    return [gray, thresh, sharp, invert]
 
-    # 6️⃣ save to uploads/processed
-    os.makedirs("uploads/processed", exist_ok=True)
 
-    filename = os.path.basename(img_path)
-    name, ext = os.path.splitext(filename)
+# -------------------------
+# OCR RUN
+# -------------------------
+def run_ocr_multi(images):
+    results = []
+    for img in images:
+        res = ocr.ocr(img, cls=True)
+        if res and res[0]:
+            results.append(res)
+    return results
 
-    processed_path = f"uploads/processed/{name}_processed{ext}"
 
-    cv2.imwrite(processed_path, sharpened)
+# -------------------------
+# AADHAAR NUMBER EXTRACTION
+# -------------------------
+def extract_aadhaar_number_from_result(result):
+    candidates = []
 
-    return processed_path
+    for line in result[0]:
+        text = line[1][0].upper()
+        y = line[0][0][1]
+        conf = line[1][1]
 
-# Extract DOB using keywords and fallback
+        # 1. Clean the text (Fix O->0, B->8)
+        t = correct_digits(text)
+        
+        # 2. Extract ONLY the digits to count them
+        #    This removes spaces, 'VID', 'Mobile', etc.
+        digits_only = re.sub(r'\D', '', t) 
+
+        # ----------------------------------------
+        # ⛔ CRITICAL FIX: COUNT THE DIGITS
+        # ----------------------------------------
+        
+        # If the line has 16 digits (VID), ignore it completely.
+        if len(digits_only) >= 16:
+            continue
+            
+        # If the line has 10 digits (Mobile Number), ignore it.
+        if len(digits_only) == 10:
+            continue
+
+        # ----------------------------------------
+        # ✅ ACCEPT ONLY 12 DIGITS (AADHAAR)
+        # ----------------------------------------
+        if len(digits_only) == 12:
+            
+            # Double check: Is it physically formatted like "XXXX XXXX XXXX"?
+            # (Length of string roughly 14 chars)
+            # This ensures we don't pick up random 12-digit barcodes.
+            if len(t.replace(" ", "")) >= 12: 
+                candidates.append({
+                    "num": digits_only,
+                    "score": conf, 
+                    "y": y
+                })
+
+    # ----------------------------------------
+    # SELECT BEST CANDIDATE
+    # ----------------------------------------
+    if not candidates:
+        return None
+
+    # Sort by Score (Confidence)
+    candidates.sort(key=lambda x: x["score"], reverse=True)
+
+    best = candidates[0]["num"]
+    # Return formatted "1234 5678 9012"
+    return f"{best[:4]} {best[4:8]} {best[8:]}"
+
+
+
+# -------------------------
+# DOB
+# -------------------------
 def extract_dob(text: str):
-    # normalize text
-    clean_text = text.replace("\n", " ").upper()
+    text = text.replace("\n", " ")
+    text_upper = text.upper()
 
-    # 🔥 find DOB using keyword
-    dob_match = re.search(
+    # -------------------------
+    # 1️⃣ STRICT MATCH: DOB keyword
+    # -------------------------
+    match = re.search(
         r'(DOB|DATE OF BIRTH)[^\d]*(\d{1,2}[/-]\d{1,2}[/-]\d{4})',
-        clean_text
+        text_upper
+    )
+    if match:
+        return match.group(2)
+
+    # -------------------------
+    # 2️⃣ REMOVE ISSUE DATE AREA
+    # -------------------------
+    text_clean = re.sub(
+        r'(ISSUE DATE|ISSUED)[^\d]*\d{1,2}[/-]\d{1,2}[/-]\d{4}',
+        '',
+        text_upper
     )
 
-    if dob_match:
-        return dob_match.group(2)
+    # -------------------------
+    # 3️⃣ FIND ALL DATES
+    # -------------------------
+    dates = re.findall(r'\d{1,2}[/-]\d{1,2}[/-]\d{4}', text_clean)
 
-    # fallback: pick oldest date (not issue date)
-    dates = re.findall(r'\d{1,2}[/-]\d{1,2}[/-]\d{4}', clean_text)
+    if not dates:
+        return None
 
-    if dates:
-        # sort by year (smallest year = DOB)
-        dates_sorted = sorted(dates, key=lambda d: int(d.split("/")[-1]))
-        return dates_sorted[0]
+    # -------------------------
+    # 4️⃣ PICK VALID DOB (AGE CHECK)
+    # -------------------------
+    valid_dates = []
+
+    for d in dates:
+        try:
+            day, month, year = map(int, re.split(r'[/-]', d))
+
+            # ignore unrealistic years
+            if 1900 <= year <= 2025:
+                age = 2026 - year
+
+                # realistic age (5 to 120)
+                if 5 <= age <= 120:
+                    valid_dates.append((d, year))
+        except:
+            continue
+
+    if valid_dates:
+        # pick oldest (DOB is earliest)
+        valid_dates.sort(key=lambda x: x[1])
+        return valid_dates[0][0]
 
     return None
-
 
 def format_dob(dob):
     if not dob:
         return None
+
     parts = re.split(r'[/-]', dob)
+
     if len(parts) == 3:
         return f"{parts[0].zfill(2)}/{parts[1].zfill(2)}/{parts[2]}"
+
     return dob
 
 
 # -------------------------
-# OCR extraction
+# NAME (SMART)
 # -------------------------
-def extract_aadhaar_data(image_path: str) -> dict:
-    processed = preprocess(image_path)
-
-    result = ocr.ocr(processed)
-
-    if not result or not result[0]:
-        return {
-            "raw_text": "",
-            "aadhaar_number": None,
-            "aadhaar_full": None,
-            "name": None,
-            "dob": None,
-            "confidence": 0
-        }
-
-    text = ""
-    confidence_sum = 0
-    count = 0
+def extract_name(result):
+    lines = []
 
     for line in result[0]:
-        text_piece = line[1][0]
+        text = line[1][0].strip()
         conf = line[1][1]
+        y = line[0][0][1]
 
-        text += text_piece + " "
-        confidence_sum += conf
-        count += 1
+        lines.append({
+            "text": text,
+            "conf": conf,
+            "y": y
+        })
 
-    text = text.strip()
-    avg_confidence = confidence_sum / count if count else 0
+    lines = sorted(lines, key=lambda x: x["y"])
 
-    aadhaar = re.search(r'\d{4}\s\d{4}\s\d{4}', text)
-    # dob = re.search(r'\d{1,2}[/-]\d{1,2}[/-]\d{4}', text)
-    dob = extract_dob(text)
+    blacklist = [
+        "government", "india", "unique", "authority",
+        "uidai", "aadhaar", "dob", "male", "female",
+        "address", "vid", "year", "birth",
+        "mobile", "phone", "mera", "pehchan",
+        "identification", "proof", "citizenship"
+    ]
 
+    candidates = []
 
-    aadhaar_num = aadhaar.group() if aadhaar else None
+    # -------------------------
+    # Find DOB line
+    # -------------------------
+    dob_index = -1
+    for i, l in enumerate(lines):
+        t = l["text"].lower()
 
-    # 🔥 MODULE 5 NAME extraction
-    words = text.split()
-    name = None
-    for i in range(len(words) - 1):
-        if words[i].isalpha() and words[i+1].isalpha():
-            name = words[i] + " " + words[i+1]
+        if "dob" in t or re.search(r'\d{2}/\d{2}/\d{4}', t):
+            dob_index = i
             break
 
+    # -------------------------
+    # Extract candidates
+    # -------------------------
+    for i, l in enumerate(lines):
+        raw = l["text"]
+
+        # remove special chars
+        clean = re.sub(r'[^A-Za-z ]', '', raw).strip()
+        words = clean.split()
+
+        # -------------------------
+        # HARD FILTERS
+        # -------------------------
+        if len(words) < 2 or len(words) > 3:
+            continue
+
+        if any(w.lower() in blacklist for w in words):
+            continue
+
+        if not all(w.isalpha() for w in words):
+            continue
+
+        if any(len(w) <= 2 for w in words):
+            continue
+
+        # ❌ remove slogan
+        if fuzz.partial_ratio(clean.lower(), "mera aadhaar meri pehchan") > 80:
+            continue
+
+        # ❌ remove government
+        if fuzz.partial_ratio(clean.lower(), "government of india") > 80:
+            continue
+
+        # ❌ remove mobile line
+        if "mobile" in raw.lower():
+            continue
+
+        # -------------------------
+        # SCORING
+        # -------------------------
+        score = 0
+
+        # confidence
+        score += l["conf"] * 2
+
+        # word length quality
+        avg_len = sum(len(w) for w in words) / len(words)
+        if avg_len >= 4:
+            score += 2
+
+        # position (very important)
+        if dob_index != -1:
+            distance = abs(i - dob_index)
+
+            if distance == 1:
+                score += 5
+            elif distance <= 3:
+                score += 3
+
+        # avoid header
+        if i < 3:
+            score -= 2
+
+        candidates.append((score, clean.title()))
+
+    # -------------------------
+    # SELECT BEST
+    # -------------------------
+    if candidates:
+        candidates.sort(reverse=True, key=lambda x: x[0])
+        return candidates[0][1]
+
+    return None
+
+
+
+# -------------------------
+# OCR ENGINE
+# -------------------------
+def extract_aadhaar_data(image_path):
+    images = preprocess_variants(image_path)
+    results = run_ocr_multi(images)
+
+    best = None
+    best_score = 0
+
+    for res in results:
+        text = " ".join([l[1][0] for l in res[0]])
+
+        # aadhaar = extract_aadhaar(text)
+        aadhaar = extract_aadhaar_number_from_result(res)
+
+        name = extract_name(res)
+        dob = extract_dob(text)
+        dob = format_dob(dob)
+
+        score = 0
+
+        if aadhaar:
+            score += 5   # most important
+        if name:
+            score += 3
+        if dob:
+            score += 2
+
+        if score > best_score:
+            best_score = score
+            best = (aadhaar, name, dob, res)
+
+    if not best:
+        return {"confidence": 0}
+    aadhaar, name, dob, res = best
+    conf = sum([l[1][1] for l in res[0]]) / len(res[0])
     return {
-        "raw_text": text,
-        "aadhaar_number": mask_aadhaar(aadhaar_num),
-        "aadhaar_full": aadhaar_num,   # unmasked full number
         "name": name,
-        "dob": format_dob(dob),
-        "confidence": round(avg_confidence, 2)
+        "dob": dob,
+        "aadhaar_number": mask_aadhaar(aadhaar),
+        "aadhaar_full": aadhaar,
+        "confidence": round(conf, 2)
     }
 
 
+def run_ocr(path):
+    return extract_aadhaar_data(path)
 
-# --------------------------------
-# Public wrapper (called by router)
-# --------------------------------
-def run_ocr(image_path: str):
-    return extract_aadhaar_data(image_path)
+
+def calculate_score(aadhaar, name, dob, confidence):
+    score = 0
+
+    # Aadhaar is most important
+    if aadhaar:
+        score += 5
+
+    # Name quality
+    if name and len(name.split()) >= 2:
+        score += 3
+
+    # DOB
+    if dob:
+        score += 2
+
+    # OCR confidence
+    score += confidence * 2
+    return score

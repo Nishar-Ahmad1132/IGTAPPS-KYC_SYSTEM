@@ -43,7 +43,6 @@ export default function SelfieCapture() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-4">
       <div className="w-full max-w-lg backdrop-blur-xl bg-white/5 border border-white/10 shadow-2xl rounded-2xl p-8 text-center">
-
         {/* Step Indicator */}
         <div className="mb-6 text-left">
           <p className="text-sm text-slate-400">Step 4 of 5</p>
@@ -65,6 +64,7 @@ export default function SelfieCapture() {
           <Webcam
             ref={webcamRef}
             screenshotFormat="image/jpeg"
+            mirrored={true} // Mirror preview
             className="w-full"
             videoConstraints={{
               facingMode: "user",

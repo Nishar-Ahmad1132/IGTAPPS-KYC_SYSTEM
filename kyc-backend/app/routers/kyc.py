@@ -136,7 +136,7 @@ def final_kyc_decision(user_id: int, db: Session = Depends(get_db)):
     ocr_success = (
         ocr is not None
         and ocr.confidence_score is not None
-        and ocr.confidence_score >= 0.80
+        and ocr.confidence_score >= 0.75
     )
 
     # -----------------------------
@@ -162,7 +162,7 @@ def final_kyc_decision(user_id: int, db: Session = Depends(get_db)):
     face_match = (
         face is not None
         and face.match_status is True
-        and face.similarity_score >= 0.65
+        and face.similarity_score >= 0.50
     )
 
     # -----------------------------
@@ -223,4 +223,3 @@ def get_ocr(user_id: int, db: Session = Depends(get_db)):
         "aadhaar_full": ocr.aadhaar_full,       # optional if stored
         "confidence": ocr.confidence_score
     }
-
