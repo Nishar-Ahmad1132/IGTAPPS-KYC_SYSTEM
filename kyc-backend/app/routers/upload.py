@@ -104,6 +104,7 @@ def upload_aadhaar(
         existing.aadhaar_number = ocr_result["aadhaar_number"]
         existing.name = ocr_result["name"]
         existing.dob = ocr_result["dob"]
+        existing.gender = ocr_result["gender"]
         existing.confidence_score = ocr_result["confidence"]
     else:
         ocr_data = OCRData(
@@ -112,7 +113,7 @@ def upload_aadhaar(
             aadhaar_full=ocr_result["aadhaar_full"],      # full
             name=ocr_result["name"],   # 🔥 added
             dob=ocr_result["dob"],
-            gender=None,
+            gender=ocr_result["gender"],
             confidence_score=ocr_result["confidence"]
         )
         db.add(ocr_data)

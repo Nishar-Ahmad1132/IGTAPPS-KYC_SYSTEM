@@ -125,7 +125,6 @@ def extract_aadhaar_number_from_result(result):
     return f"{best[:4]} {best[4:8]} {best[8:]}"
 
 
-
 # -------------------------
 # DOB
 # -------------------------
@@ -315,6 +314,25 @@ def extract_name(result):
 
 
 # -------------------------
+# GENDER EXTRACTION
+# -------------------------
+def extract_gender(text: str):
+    text_upper = text.upper()
+    
+    # Check FEMALE first because the word contains "MALE"
+    if "FEMALE" in text_upper:
+        return "FEMALE"
+        
+    # Use word boundary \b to ensure it matches exactly "MALE" and not a slice of something else
+    elif re.search(r'\bMALE\b', text_upper):
+        return "MALE"
+        
+    elif "TRANSGENDER" in text_upper:
+        return "TRANSGENDER"
+        
+    return None
+
+# -------------------------
 # OCR ENGINE
 # -------------------------
 def extract_aadhaar_data(image_path):
@@ -333,6 +351,8 @@ def extract_aadhaar_data(image_path):
         name = extract_name(res)
         dob = extract_dob(text)
         dob = format_dob(dob)
+        # 🔥 NEW: Extract gender
+        gender = extract_gender(text)
 
         score = 0
 
@@ -345,15 +365,16 @@ def extract_aadhaar_data(image_path):
 
         if score > best_score:
             best_score = score
-            best = (aadhaar, name, dob, res)
+            best = (aadhaar, name, dob, gender, res)
 
     if not best:
         return {"confidence": 0}
-    aadhaar, name, dob, res = best
+    aadhaar, name, dob, gender, res = best
     conf = sum([l[1][1] for l in res[0]]) / len(res[0])
     return {
         "name": name,
         "dob": dob,
+        "gender": gender,
         "aadhaar_number": mask_aadhaar(aadhaar),
         "aadhaar_full": aadhaar,
         "confidence": round(conf, 2)
@@ -362,23 +383,3 @@ def extract_aadhaar_data(image_path):
 
 def run_ocr(path):
     return extract_aadhaar_data(path)
-
-
-def calculate_score(aadhaar, name, dob, confidence):
-    score = 0
-
-    # Aadhaar is most important
-    if aadhaar:
-        score += 5
-
-    # Name quality
-    if name and len(name.split()) >= 2:
-        score += 3
-
-    # DOB
-    if dob:
-        score += 2
-
-    # OCR confidence
-    score += confidence * 2
-    return score

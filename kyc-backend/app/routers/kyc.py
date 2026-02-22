@@ -115,83 +115,100 @@ def validate_name(user_id: int, db: Session = Depends(get_db)):
 # -------------------------------------------------
 # MODULE 10: Final KYC Decision Engine
 # -------------------------------------------------
+# -------------------------------------------------
+# MODULE 10: Final KYC Decision Engine (Updated)
+# -------------------------------------------------
 @router.post("/final-decision/{user_id}")
 def final_kyc_decision(user_id: int, db: Session = Depends(get_db)):
 
+    # 1. Fetch Records
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
     ocr = db.query(OCRData).filter(OCRData.user_id == user_id).first()
-    face = db.query(FaceVerification).filter(
-        FaceVerification.user_id == user_id
-    ).first()
-    liveness = db.query(LivenessLogs).filter(
-        LivenessLogs.user_id == user_id
-    ).first()
+    face = db.query(FaceVerification).filter(FaceVerification.user_id == user_id).first()
+    liveness = db.query(LivenessLogs).filter(LivenessLogs.user_id == user_id).first()
 
-    # -----------------------------
-    # OCR CHECK
-    # -----------------------------
-    ocr_success = (
-        ocr is not None
-        and ocr.confidence_score is not None
+    # 2. Evaluate Individual Modules
+    
+    # A. OCR Status
+    ocr_passed = (
+        ocr is not None 
+        and ocr.confidence_score is not None 
         and ocr.confidence_score >= 0.75
     )
 
-    # -----------------------------
-    # NAME MATCH CHECK
-    # -----------------------------
-    name_match = False
-    if ocr and ocr.name:
-        full_name = f"{user.first_name} {user.last_name}"
-        name_result = match_names(full_name, ocr.name)
-        name_match = name_result["match"]
-
-    # -----------------------------
-    # LIVENESS CHECK
-    # -----------------------------
+    # B. Liveness Status
     liveness_passed = (
-        liveness is not None
+        liveness is not None 
         and liveness.status is True
     )
 
-    # -----------------------------
-    # FACE MATCH CHECK
-    # -----------------------------
-    face_match = (
-        face is not None
-        and face.match_status is True
-        and face.similarity_score >= 0.50
-    )
+    # C. Name Match (Get Score)
+    name_passed = False
+    name_score = 0
+    if ocr and ocr.name:
+        full_name = f"{user.first_name} {user.last_name}"
+        # We calculate exact score here to be sure
+        name_score = fuzz.token_sort_ratio(full_name.lower(), ocr.name.lower())
+        name_passed = name_score >= 80  # Strict name match
 
-    # -----------------------------
-    # FINAL DECISION
-    # -----------------------------
-    if all([ocr_success, name_match, liveness_passed, face_match]):
-        user.kyc_status = "VERIFIED"
-        decision = "VERIFIED"
+    # D. Face Match (Get Score)
+    face_score = 0.0
+    if face and face.similarity_score:
+        face_score = float(face.similarity_score)
+
+    # 3. THE DECISION MATRIX (Logic Core)
+    
+    final_status = "FAILED"
+    reason = "Unknown"
+
+    # CRITICAL: OCR, Liveness, and Name MUST pass for any approval
+    if ocr_passed and liveness_passed and name_passed:
+        
+        # Scenario 1: Perfect Match (Auto-Verify)
+        if face_score >= 0.50:  # Standard threshold
+            final_status = "VERIFIED"
+            reason = "Auto-Verified: High Match"
+
+        # Scenario 2: "Child Photo" Case (Manual Review)
+        # Name is correct, User is alive, but Face match is low (0.20 - 0.40)
+        elif 0.20 <= face_score < 0.50:
+            final_status = "MANUAL_REVIEW"
+            reason = "Flagged: Name matched but Face score low (Old Photo?)"
+        
+        # Scenario 3: Face completely different
+        else:
+            final_status = "FAILED"
+            reason = "Face Mismatch"
+
     else:
-        user.kyc_status = "FAILED"
-        decision = "FAILED"
+        # Failure Reasons
+        if not ocr_passed: reason = "OCR Failed"
+        elif not liveness_passed: reason = "Liveness Failed"
+        elif not name_passed: reason = "Name Mismatch"
 
+    # 4. Save & Return
+    user.kyc_status = final_status
     db.commit()
 
-    print("---- FINAL KYC DEBUG ----")
-    print("OCR SUCCESS:", ocr_success)
-    print("NAME MATCH:", name_match)
-    print("LIVENESS PASSED:", liveness_passed)
-    print("FACE MATCH:", face_match)
+    print("---- FINAL DECISION DEBUG ----")
+    print(f"User: {user_id} | Status: {final_status}")
+    print(f"Scores -> Name: {name_score}% | Face: {face_score}")
+    print(f"Reason: {reason}")
 
     return {
         "user_id": user_id,
-        "ocr_success": ocr_success,
-        "name_match": name_match,
-        "liveness_passed": liveness_passed,
-        "face_match": face_match,
-        "final_status": decision
+        "final_status": final_status,
+        "reason": reason,
+        "metrics": {
+            "ocr_passed": ocr_passed,
+            "liveness_passed": liveness_passed,
+            "name_score": name_score,
+            "face_score": face_score
+        }
     }
-
 
 # =========================================
 # CHECK CURRENT STATUS
