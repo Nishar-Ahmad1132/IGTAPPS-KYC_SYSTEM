@@ -59,78 +59,69 @@ kyc_system/
 │ └── src/
 ```
 
+
+📦 Dependencies
 ```
----
+  🐍 Python Version
+        Python 3.10
+```
 
 ## ⚙️ Installation
+```
+1️⃣ Clone Repo
 
-### 1️⃣ Clone Repo
-
-git clone https://github.com/Nishar-Ahmad1132/IGTAPPS-KYS_SYSTEM.git
-cd IGTAPPS-KYS_SYSTEM
+  git clone https://github.com/Nishar-Ahmad1132/IGTAPPS-KYC_SYSTEM.git
+  cd IGTAPPS-KYC_SYSTEM
 
 2️⃣ Backend Setup
-cd kyc-backend
+  cd kyc-backend
+  python -m venv venv
+  venv\Scripts\activate   # Windows
+  pip install -r requirements.txt
 
-python -m venv venv
-venv\Scripts\activate   # Windows
-
-pip install -r requirements.txt
-Run server:
-
-uvicorn app.main:app --reload
-Backend runs on:
-
-http://127.0.0.1:8080
+  Run server:
+  uvicorn app.main:app --port 8080
+  Backend runs on:
+  
+  http://127.0.0.1:8080
 3️⃣ Frontend Setup
-cd kyc-frontend
-
-npm install
-npm run dev
-Frontend runs on:
-
-http://localhost:5173
+  cd kyc-frontend
+  npm install
+  npm run dev
+  Frontend runs on:
+  http://localhost:5173
+```
 🔄 KYC Flow
-User Registration
-
-Aadhaar Upload
-
-OCR Extraction
-
-Name Matching
-
-Face Extraction
-
-Selfie Capture
-
-Liveness Detection
-
-Face Matching
+```
+  User Registration
+  Aadhaar Upload
+  OCR Extraction
+  Name Matching
+  Face Extraction
+  Selfie Capture
+  Liveness Detection
+  Face Matching
+```
 
 Final KYC Decision
 
+```
 📊 Accuracy
-OCR Accuracy: ~88%
-
-Face Matching: ~95%
-
-Liveness Detection: ~98%
+  OCR Accuracy: ~88%
+  Face Matching: ~95%
+  Liveness Detection: ~98%
 
 🔐 Security Features
-Aadhaar masking (XXXX XXXX 1234)
-
-UUID-based file storage
-
-No raw sensitive logs
-
+  Aadhaar masking (XXXX XXXX 1234)
+  UUID-based file storage
+  No raw sensitive logs
+```
 📌 Future Improvements
-JWT Authentication
-
-Admin Dashboard
-
-Cloud Deployment
-
-Docker Support
+```
+  JWT Authentication
+  Admin Dashboard
+  Cloud Deployment
+  Docker Support
 ```
 
 👨‍💻 Author
