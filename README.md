@@ -16,7 +16,7 @@ This system performs automated identity verification using **OCR, Face Matching,
 - 🔄 Name Matching (Fuzzy Matching)
 - ✅ Final KYC Decision Engine
 - 🔒 Aadhaar Masking (Security)
-- 🗄️ Data Storage using SQLAlchemy
+- 🗄️ Data Storage using PostgreSQL
 
 ---
 
