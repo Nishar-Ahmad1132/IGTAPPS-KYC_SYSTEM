@@ -174,7 +174,7 @@ def final_kyc_decision(user_id: int, db: Session = Depends(get_db)):
 
         # Scenario 2: "Child Photo" Case (Manual Review)
         # Name is correct, User is alive, but Face match is low (0.20 - 0.40)
-        elif 0.20 <= face_score < 0.50:
+        elif 0.30 <= face_score < 0.50:
             final_status = "MANUAL_REVIEW"
             reason = "Flagged: Name matched but Face score low (Old Photo?)"
         
