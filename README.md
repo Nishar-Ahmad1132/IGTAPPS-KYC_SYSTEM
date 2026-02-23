@@ -25,7 +25,7 @@ This system performs automated identity verification using **OCR, Face Matching,
 ### Backend
 - FastAPI
 - SQLAlchemy
-- SQLite (can be replaced with PostgreSQL/MySQL)
+- PostgreSQL
 
 ### AI / Computer Vision
 - PaddleOCR
