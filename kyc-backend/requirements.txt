@@ -75,6 +75,7 @@ onnx==1.14.1
 onnxruntime==1.23.2
 opencv-contrib-python==4.6.0.66
 opencv-python==4.6.0.66
+opencv-python-headless==4.11.0.86
 openpyxl==3.1.5
 opt-einsum==3.3.0
 packaging==26.0
@@ -88,6 +89,7 @@ premailer==3.10.0
 prettytable==3.17.0
 protobuf==3.20.2
 psutil==7.2.2
+psycopg2-binary==2.9.11
 py-cpuinfo==9.0.0
 pyclipper==1.4.0
 pycparser==3.0
